@@ -38,6 +38,15 @@ body{
   border-radius:8px
 }
 
+.file-camera{
+  position:absolute;
+  left:-9999px;
+  width:1px;
+  height:1px;
+  opacity:0;
+}
+
+
 label{font-weight:bold;display:block;margin-top:10px}
 input,select,textarea,button{
   width:100%;
@@ -128,12 +137,24 @@ button:disabled{background:#9e9e9e}
 
 <label>Foto Kegiatan</label>
 
-<input
-  type="file"
-  id="foto"
-  accept="image/*"
-  capture="environment"
-  class="hidden">
+<div id="infoWaktu" class="error" style="display:none"></div>
+
+
+<video id="video"
+  autoplay
+  playsinline
+  style="width:100%;border:1px solid #ccc;border-radius:8px">
+</video>
+
+<button type="button" id="btnAmbil">
+  📸 Ambil Foto
+</button>
+
+<canvas id="canvas" class="hidden"></canvas>
+
+<div class="preview" id="preview"></div>
+
+
 
 <button type="button" id="btnKamera">
   📷 Buka Kamera
@@ -167,7 +188,7 @@ const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
 /* ===== APPS SCRIPT ===== */
-const GAS_URL="https://script.google.com/macros/s/AKfycbwe6lo9qYfzU8EA4oFesmPQ2rKw0P01MtFK7fenc2UfRm1x_29yS_AAc2PbqRNcMfnTHA/exec";
+const GAS_URL="https://script.google.com/macros/s/AKfycbwD3mIvrZMRBy3NN4iJ4FkNZ3VxfH8ucKMzImvAAGORgG0K0AxQU4h1c5zvsUb__C4K/exec";
 
 /* ===== ELEMENT ===== */
 const loginBox=document.getElementById("loginBox");
@@ -184,27 +205,50 @@ const mapelEl=document.getElementById("mapel");
 const catatanEl=document.getElementById("catatan");
 const hadirEl=document.getElementById("hadir");
 const absenEl=document.getElementById("absen");
-const fotoEl=document.getElementById("foto");
+
 const previewEl=document.getElementById("preview");
 const statusEl=document.getElementById("status");
 const errorEl=document.getElementById("error");
 const btnSimpan=document.getElementById("btnSimpan");
 const namaLembagaTampil = document.getElementById("namaLembagaTampil");
 const btnKamera = document.getElementById("btnKamera");
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const btnAmbil = document.getElementById("btnAmbil");
+
+
+btnAmbil.style.display = "none";
+video.style.display = "none";
+
+let stream = null;
+let fotoBlob = null;
 
 
 
 let lembagaId="";
 let namaLembaga="";
 
+function isJamPembiasaanValid(){
+  const now = new Date();
+  const jam = now.getHours();
+  const menit = now.getMinutes();
+
+  const totalMenit = jam * 60 + menit;
+
+  const mulai = 6 * 60 + 30; // 06:30
+  const selesai = 7 * 60 + 5; // 07:05
+
+  return totalMenit >= mulai && totalMenit <= selesai;
+}
+
+
+
 function sortByText(a, b){
   return a.localeCompare(b, "id", { numeric: true, sensitivity: "base" });
 }
 
 
-btnKamera.onclick = () => {
-  fotoEl.click();
-};
+
 
 
 /* ===== MASUK DENGAN KODE ===== */
@@ -216,10 +260,7 @@ btnMasuk.onclick=async()=>{
   const q=query(collection(db,"lembaga"),where("kode","==",kode));
   const s=await getDocs(q);
 
-  if(s.empty){
-    loginError.textContent="Kode lembaga tidak ditemukan";
-    return;
-  }
+ 
 
   const d=s.docs[0];
   const x=d.data();
@@ -243,6 +284,9 @@ namaLembagaTampil.textContent = namaLembaga;
   loadKelas();
   loadMapel();
 };
+
+
+
 
 /* ===== LOAD DATA ===== */
 async function loadGuru(){
@@ -290,6 +334,44 @@ async function loadRombel(){
   });
 }
 
+btnAmbil.onclick = () => {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+
+  canvas.width = w;
+  canvas.height = h;
+
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(video, 0, 0, w, h);
+
+  canvas.toBlob(blob => {
+    fotoBlob = blob;
+
+    // preview hasil foto
+    const url = URL.createObjectURL(blob);
+    previewEl.innerHTML = `<img src="${url}" width="120">`;
+
+  }, "image/jpeg", 0.9);
+
+
+// MATIKAN KAMERA
+stream.getTracks().forEach(t => t.stop());
+stream = null;
+
+// atur tampilan tombol
+video.style.display = "none";
+btnAmbil.style.display = "none";
+btnKamera.style.display = "block";
+};
+
+async function bukaKamera(){
+  stream = await navigator.mediaDevices.getUserMedia({
+    video:{ facingMode:"environment" }
+  });
+  video.srcObject = stream;
+}
+
+
 async function loadMapel(){
   const s=await getDocs(collection(db,"mapel"));
 
@@ -304,82 +386,127 @@ async function loadMapel(){
   });
 }
 
+mapelEl.onchange = () => {
+  const namaMapel =
+    mapelEl.options[mapelEl.selectedIndex]?.text.toLowerCase() || "";
 
-/* ===== FOTO ===== */
-fotoEl.onchange = () => {
-  const file = fotoEl.files[0];
-  if(!file) return;
+  const info = document.getElementById("infoWaktu");
 
-  // pastikan image
-  if(!file.type.startsWith("image/")){
-    alert("Foto harus diambil dari kamera");
-    fotoEl.value="";
-    return;
+  if(namaMapel.includes("pembiasaan")){
+    if(!isJamPembiasaanValid()){
+      info.style.display = "block";
+      info.textContent =
+        "❌ Pembiasaan pagi hanya bisa diinput pukul 06.30 – 07.05";
+
+      btnKamera.disabled = true;
+      btnSimpan.disabled = true;
+      btnKamera.style.opacity = 0.6;
+      btnSimpan.style.opacity = 0.6;
+    }else{
+      info.style.display = "none";
+      btnKamera.disabled = false;
+      btnSimpan.disabled = false;
+      btnKamera.style.opacity = 1;
+      btnSimpan.style.opacity = 1;
+    }
+  }else{
+    // mapel selain pembiasaan → bebas
+    info.style.display = "none";
+    btnKamera.disabled = false;
+    btnSimpan.disabled = false;
+    btnKamera.style.opacity = 1;
+    btnSimpan.style.opacity = 1;
   }
-
-  // preview
-  const r = new FileReader();
-  r.onload = () => {
-    previewEl.innerHTML = `<img src="${r.result}">`;
-  };
-  r.readAsDataURL(file);
 };
 
-async function uploadFoto(file){
+
+
+
+
+
+btnKamera.onclick = async () => {
+  await bukaKamera();
+
+  video.style.display = "block";
+  btnAmbil.style.display = "block";
+  btnKamera.style.display = "none";
+};
+
+
+
+/* ===== FOTO ===== */
+async function uploadFotoBlob(blob){
   statusEl.textContent="Upload foto...";
-  const r=new FileReader();
+
+  const reader = new FileReader();
   return new Promise(res=>{
-    r.onload=async()=>{
-      const o=await fetch(GAS_URL,{
+    reader.onload = async()=>{
+      const o = await fetch(GAS_URL,{
         method:"POST",
         body:JSON.stringify({
           action:"upload",
-          name:file.name,
-          mime:file.type,
-          data:r.result.split(",")[1]
+          name:"jurnal_"+Date.now()+".jpg",
+          mime:"image/jpeg",
+          data: reader.result.split(",")[1]
         })
       });
-      const j=await o.json();
+      const j = await o.json();
       res(j.url);
     };
-    r.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
 }
 
+
 /* ===== SIMPAN ===== */
-btnSimpan.onclick=async()=>{
-if(!fotoEl.files[0]){
-  errorEl.textContent = "Foto kegiatan wajib diambil dari kamera";
+btnSimpan.onclick = async()=>{
+
+const namaMapel =
+  mapelEl.options[mapelEl.selectedIndex]?.text.toLowerCase() || "";
+
+if(namaMapel.includes("pembiasaan") && !isJamPembiasaanValid()){
+  errorEl.textContent =
+    "⛔ Di luar jam pembiasaan pagi (06.30 – 07.05)";
   return;
 }
 
-  try{
-    let fotoUrl="";
-    if(fotoEl.files[0]) fotoUrl=await uploadFoto(fotoEl.files[0]);
 
-    await addDoc(collection(db,"jurnal"),{
-      lembagaId,
-      namaLembaga,
-      guruId:guruEl.value,
-      namaGuru:guruEl.options[guruEl.selectedIndex].text,
-      kelasId:kelasEl.value,
-      namaKelas:kelasEl.options[kelasEl.selectedIndex].text,
-      rombelId:rombelEl.value,
-      namaRombel:rombelEl.options[rombelEl.selectedIndex].text,
-      mapelId:mapelEl.value,
-      namaMapel:mapelEl.options[mapelEl.selectedIndex].text,
-      catatan:catatanEl.value,
-      hadir:+hadirEl.value,
-      absen:+absenEl.value,
-      foto:fotoUrl,
-      tanggal:new Date()
-    });
 
-    alert("Jurnal tersimpan");
-    location.reload();
-  }catch(e){
-    errorEl.textContent=e;
+  if(!fotoBlob){
+    errorEl.textContent =
+      "Foto kegiatan wajib diambil dari kamera";
+    return;
   }
+
+  const fotoUrl = await uploadFotoBlob(fotoBlob);
+
+await addDoc(collection(db,"jurnal"),{
+  lembagaId,
+  namaLembaga,
+
+  guruId: guruEl.value,
+  namaGuru: guruEl.options[guruEl.selectedIndex]?.text || "",
+
+  kelasId: kelasEl.value,
+  namaKelas: kelasEl.options[kelasEl.selectedIndex]?.text || "",
+
+  rombelId: rombelEl.value,
+  namaRombel: rombelEl.options[rombelEl.selectedIndex]?.text || "",
+
+  mapelId: mapelEl.value,
+  namaMapel: mapelEl.options[mapelEl.selectedIndex]?.text || "",
+
+  catatan: catatanEl.value,
+  hadir: Number(hadirEl.value || 0),
+  absen: Number(absenEl.value || 0),
+
+  foto: fotoUrl,
+  dibuat: new Date()
+});
+
+
+  alert("Jurnal tersimpan");
+  location.reload();
 };
 
 kelasEl.onchange=loadRombel;
