@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Master Kelas</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{
+  font-family:Arial, sans-serif;
+  background:#f4f6f8;
+  padding:20px
+}
+.card{
+  max-width:560px;
+  margin:auto;
+  background:#fff;
+  padding:20px;
+  border-radius:8px
+}
+label{
+  font-weight:bold;
+  display:block;
+  margin-top:10px
+}
+input,select,textarea,button{
+  width:100%;
+  padding:8px;
+  margin-top:5px;
+  font-family:inherit
+}
+textarea{resize:vertical}
+button{
+  background:#2e7d32;
+  color:#fff;
+  border:none;
+  margin-top:15px;
+  cursor:pointer
+}
+button.secondary{background:#757575}
+button.danger{background:#c62828}
+button.small{
+  width:auto;
+  padding:4px 8px;
+  font-size:12px
+}
+ul{list-style:none;padding:0;margin-top:10px}
+li{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border-bottom:1px solid #eee;
+  padding:6px 0
+}
+.error{
+  color:#c62828;
+  font-size:12px;
+  margin-top:6px
+}
+.note{
+  font-size:12px;
+  color:#555;
+  margin-top:4px
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2 align="center">Master Kelas</h2>
+
+<label>Pilih Lembaga</label>
+<select id="pilihLembaga">
+  <option value="">-- Pilih Lembaga --</option>
+</select>
+
+<label>Nama Kelas</label>
+<textarea id="namaKelas" rows="5"
+placeholder="1 baris = 1 kelas
+Contoh:
+Kelas 1A
+Kelas 1B
+Kelas 2A"></textarea>
+<div class="note">Saat edit, hanya 1 kelas</div>
+
+<button id="btnSimpan">Simpan Kelas</button>
+<button id="btnBatal" class="secondary" style="display:none">Batal</button>
+
+<div class="error" id="error"></div>
+
+<hr>
+<h3>Daftar Kelas</h3>
+<div id="listKelas">Pilih lembaga terlebih dahulu</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, getDocs,
+  doc, updateDoc, getDoc, deleteDoc,
+  query, where
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/* ===== FIREBASE ===== */
+const firebaseConfig = {
+  apiKey:"AIzaSyCcjNKkW3ASw46yKXshKIa6qkrJMNVlep8",
+  authDomain:"jurnalmengajar-d4e8e.firebaseapp.com",
+  projectId:"jurnalmengajar-d4e8e"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ===== ELEMENT ===== */
+const pilihLembagaEl = document.getElementById("pilihLembaga");
+const namaKelasEl   = document.getElementById("namaKelas");
+const btnSimpan     = document.getElementById("btnSimpan");
+const btnBatal      = document.getElementById("btnBatal");
+const listKelasEl   = document.getElementById("listKelas");
+const errorEl       = document.getElementById("error");
+
+/* ===== STATE ===== */
+let editId = null;
+
+/* ===== LOAD LEMBAGA ===== */
+async function loadLembaga(){
+  const snap = await getDocs(collection(db,"lembaga"));
+  let opt='<option value="">-- Pilih Lembaga --</option>';
+  snap.forEach(d=>{
+    const x=d.data();
+    opt+=`<option value="${d.id}">${x.nama}</option>`;
+  });
+  pilihLembagaEl.innerHTML=opt;
+}
+loadLembaga();
+
+/* ===== LOAD KELAS ===== */
+async function loadKelas(lembagaId){
+  if(!lembagaId){
+    listKelasEl.innerHTML="Pilih lembaga terlebih dahulu";
+    return;
+  }
+
+  const q=query(
+    collection(db,"kelas"),
+    where("lembagaId","==",lembagaId)
+  );
+  const snap=await getDocs(q);
+
+  if(snap.empty){
+    listKelasEl.innerHTML="Belum ada kelas";
+    return;
+  }
+
+  let html="<ul>";
+  snap.forEach(d=>{
+    const x=d.data();
+    html+=`
+      <li>
+        ${x.namaKelas}
+        <button class="small" onclick="editKelas('${d.id}','${x.namaKelas}')">Edit</button>
+        <button class="small danger" onclick="hapusKelas('${d.id}','${lembagaId}')">Hapus</button>
+      </li>`;
+  });
+  html+="</ul>";
+  listKelasEl.innerHTML=html;
+}
+
+/* ===== SIMPAN / UPDATE ===== */
+async function simpanKelas(){
+  errorEl.textContent="";
+  const lembagaId = pilihLembagaEl.value;
+  const teks = namaKelasEl.value.trim();
+
+  if(!lembagaId || !teks){
+    errorEl.textContent="Lembaga dan nama kelas wajib diisi";
+    return;
+  }
+
+  /* MODE EDIT (1 kelas) */
+  if(editId){
+    const nama = teks.split("\n")[0].trim();
+    await updateDoc(doc(db,"kelas",editId),{ namaKelas:nama });
+    resetForm();
+    loadKelas(lembagaId);
+    return;
+  }
+
+  /* MODE TAMBAH BANYAK */
+  const daftar = teks
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(x=>x);
+
+  if(daftar.length===0){
+    errorEl.textContent="Tidak ada kelas valid";
+    return;
+  }
+
+  for(const namaKelas of daftar){
+    await addDoc(collection(db,"kelas"),{
+      lembagaId,
+      namaKelas,
+      dibuat:new Date()
+    });
+  }
+
+  const lembagaRef = doc(db,"lembaga",lembagaId);
+  const l = (await getDoc(lembagaRef)).data();
+  await updateDoc(lembagaRef,{
+    jumlahKelas:(l.jumlahKelas||0)+daftar.length
+  });
+
+  resetForm();
+  loadKelas(lembagaId);
+}
+
+/* ===== EDIT ===== */
+window.editKelas=(id,nama)=>{
+  editId=id;
+  namaKelasEl.value=nama;
+  btnSimpan.textContent="Update Kelas";
+  btnBatal.style.display="block";
+};
+
+/* ===== HAPUS ===== */
+window.hapusKelas=async(id,lembagaId)=>{
+  if(!confirm("Hapus kelas ini?")) return;
+
+  await deleteDoc(doc(db,"kelas",id));
+
+  const lembagaRef = doc(db,"lembaga",lembagaId);
+  const l=(await getDoc(lembagaRef)).data();
+  await updateDoc(lembagaRef,{
+    jumlahKelas:Math.max((l.jumlahKelas||1)-1,0)
+  });
+
+  loadKelas(lembagaId);
+};
+
+/* ===== RESET ===== */
+function resetForm(){
+  editId=null;
+  namaKelasEl.value="";
+  btnSimpan.textContent="Simpan Kelas";
+  btnBatal.style.display="none";
+}
+
+/* ===== EVENT ===== */
+btnSimpan.onclick=simpanKelas;
+btnBatal.onclick=resetForm;
+pilihLembagaEl.onchange=()=>loadKelas(pilihLembagaEl.value);
+</script>
+
+</body>
+</html>

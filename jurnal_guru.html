@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Input Jurnal Guru</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{
+  font-family:Arial, sans-serif;
+  background:#f4f6f8;
+  padding:20px
+}
+.card{
+  max-width:620px;
+  margin:auto;
+  background:#fff;
+  padding:20px;
+  border-radius:8px
+}
+label{
+  font-weight:bold;
+  display:block;
+  margin-top:10px
+}
+input,select,textarea,button{
+  width:100%;
+  padding:8px;
+  margin-top:5px;
+  font-family:inherit
+}
+textarea{resize:vertical}
+button{
+  background:#2e7d32;
+  color:#fff;
+  border:none;
+  margin-top:15px;
+  cursor:pointer
+}
+button:disabled{background:#9e9e9e}
+.preview img{
+  width:120px;
+  height:120px;
+  object-fit:cover;
+  border:1px solid #ccc;
+  margin-top:8px
+}
+.status{font-size:12px;color:#555;margin-top:6px}
+.error{color:#c62828;font-size:12px;margin-top:6px}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2 align="center">Input Jurnal Guru</h2>
+
+<label>Pilih Lembaga</label>
+<select id="lembaga"></select>
+
+<label>Nama Guru</label>
+<select id="guru"></select>
+
+<label>Kelas</label>
+<select id="kelas"></select>
+
+<label>Rombel</label>
+<select id="rombel"></select>
+
+<label>Mata Pelajaran</label>
+<select id="mapel"></select>
+
+<label>Catatan Pembelajaran</label>
+<textarea id="catatan" rows="4"></textarea>
+
+<label>Jumlah Siswa Hadir</label>
+<input type="number" id="hadir">
+
+<label>Jumlah Siswa Absen</label>
+<input type="number" id="absen">
+
+<label>Foto Kegiatan</label>
+<input type="file" id="foto" accept="image/*">
+<div class="preview" id="preview"></div>
+<div class="status" id="status"></div>
+<div class="error" id="error"></div>
+
+<button id="btnSimpan">Simpan Jurnal</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, getDocs,
+  query, where
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/* ===== FIREBASE ===== */
+const firebaseConfig = {
+  apiKey:"AIzaSyCcjNKkW3ASw46yKXshKIa6qkrJMNVlep8",
+  authDomain:"jurnalmengajar-d4e8e.firebaseapp.com",
+  projectId:"jurnalmengajar-d4e8e"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ===== APPS SCRIPT (SAMA DENGAN LOGO) ===== */
+const GAS_URL =
+"https://script.google.com/macros/s/AKfycbwe6lo9qYfzU8EA4oFesmPQ2rKw0P01MtFK7fenc2UfRm1x_29yS_AAc2PbqRNcMfnTHA/exec";
+
+/* ===== ELEMENT ===== */
+const lembagaEl = document.getElementById("lembaga");
+const guruEl = document.getElementById("guru");
+const kelasEl = document.getElementById("kelas");
+const rombelEl = document.getElementById("rombel");
+const mapelEl = document.getElementById("mapel");
+const catatanEl = document.getElementById("catatan");
+const hadirEl = document.getElementById("hadir");
+const absenEl = document.getElementById("absen");
+const fotoEl = document.getElementById("foto");
+const previewEl = document.getElementById("preview");
+const statusEl = document.getElementById("status");
+const errorEl = document.getElementById("error");
+const btnSimpan = document.getElementById("btnSimpan");
+
+/* ===== LOAD DATA ===== */
+async function loadLembaga(){
+  const s=await getDocs(collection(db,"lembaga"));
+  lembagaEl.innerHTML='<option value="">-- Pilih --</option>';
+  s.forEach(d=>lembagaEl.innerHTML+=
+    `<option value="${d.id}">${d.data().nama}</option>`);
+}
+loadLembaga();
+
+async function loadGuru(id){
+  const q=query(collection(db,"guru"),where("lembagaId","==",id));
+  const s=await getDocs(q);
+  guruEl.innerHTML='<option value="">-- Pilih --</option>';
+  s.forEach(d=>guruEl.innerHTML+=
+    `<option value="${d.id}">${d.data().namaGuru}</option>`);
+}
+
+async function loadKelas(id){
+  const q=query(collection(db,"kelas"),where("lembagaId","==",id));
+  const s=await getDocs(q);
+  kelasEl.innerHTML='<option value="">-- Pilih --</option>';
+  s.forEach(d=>kelasEl.innerHTML+=
+    `<option value="${d.id}">${d.data().namaKelas}</option>`);
+}
+
+async function loadRombel(kelasId){
+  const q=query(collection(db,"rombel"),where("kelasId","==",kelasId));
+  const s=await getDocs(q);
+  rombelEl.innerHTML='<option value="">-- Pilih --</option>';
+  s.forEach(d=>rombelEl.innerHTML+=
+    `<option value="${d.id}">${d.data().namaRombel}</option>`);
+}
+
+async function loadMapel(){
+  const s=await getDocs(collection(db,"mapel"));
+  mapelEl.innerHTML='<option value="">-- Pilih --</option>';
+  s.forEach(d=>mapelEl.innerHTML+=
+    `<option value="${d.id}">${d.data().namaMapel}</option>`);
+}
+loadMapel();
+
+/* ===== FOTO PREVIEW ===== */
+fotoEl.onchange=()=>{
+  const f=fotoEl.files[0];
+  if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>previewEl.innerHTML=`<img src="${r.result}">`;
+  r.readAsDataURL(f);
+};
+
+/* ===== UPLOAD FOTO ===== */
+async function uploadFoto(file){
+  statusEl.textContent="Upload foto...";
+  const r=new FileReader();
+  return new Promise(res=>{
+    r.onload=async()=>{
+      const out=await fetch(GAS_URL,{
+        method:"POST",
+        body:JSON.stringify({
+          action:"upload",
+          name:file.name,
+          mime:file.type,
+          data:r.result.split(",")[1]
+        })
+      });
+      const j=await out.json();
+      res(j.url);
+    };
+    r.readAsDataURL(file);
+  });
+}
+
+/* ===== SIMPAN ===== */
+btnSimpan.onclick=async()=>{
+  errorEl.textContent="";
+  try{
+    let fotoUrl="";
+    if(fotoEl.files[0]){
+      fotoUrl=await uploadFoto(fotoEl.files[0]);
+    }
+
+    await addDoc(collection(db,"jurnal"),{
+      lembagaId:lembagaEl.value,
+      guruId:guruEl.value,
+      namaGuru:guruEl.options[guruEl.selectedIndex].text,
+      kelasId:kelasEl.value,
+      namaKelas:kelasEl.options[kelasEl.selectedIndex].text,
+      rombelId:rombelEl.value,
+      namaRombel:rombelEl.options[rombelEl.selectedIndex].text,
+      mapelId:mapelEl.value,
+      namaMapel:mapelEl.options[mapelEl.selectedIndex].text,
+      catatan:catatanEl.value,
+      hadir:+hadirEl.value,
+      absen:+absenEl.value,
+      foto:fotoUrl,
+      tanggal:new Date()
+    });
+
+    alert("Jurnal tersimpan");
+    location.reload();
+  }catch(e){
+    errorEl.textContent=e;
+  }
+};
+
+/* ===== EVENT ===== */
+lembagaEl.onchange=()=>{
+  loadGuru(lembagaEl.value);
+  loadKelas(lembagaEl.value);
+};
+kelasEl.onchange=()=>loadRombel(kelasEl.value);
+</script>
+
+</body>
+</html>

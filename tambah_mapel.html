@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Master Mata Pelajaran</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{
+  font-family:Arial, sans-serif;
+  background:#f4f6f8;
+  padding:20px
+}
+.card{
+  max-width:520px;
+  margin:auto;
+  background:#fff;
+  padding:20px;
+  border-radius:8px
+}
+label{
+  font-weight:bold;
+  display:block;
+  margin-top:10px
+}
+textarea,button{
+  width:100%;
+  padding:8px;
+  margin-top:5px;
+  font-family:inherit
+}
+textarea{resize:vertical}
+button{
+  background:#2e7d32;
+  color:#fff;
+  border:none;
+  margin-top:15px;
+  cursor:pointer
+}
+button.secondary{background:#757575}
+button.danger{background:#c62828}
+button.small{
+  width:auto;
+  padding:4px 8px;
+  font-size:12px
+}
+ul{list-style:none;padding:0;margin-top:10px}
+li{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border-bottom:1px solid #eee;
+  padding:6px 0
+}
+.error{
+  color:#c62828;
+  font-size:12px;
+  margin-top:6px
+}
+.note{
+  font-size:12px;
+  color:#555;
+  margin-top:4px
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2 align="center">Master Mata Pelajaran</h2>
+
+<label>Nama Mata Pelajaran</label>
+<textarea id="namaMapel" rows="6"
+placeholder="1 baris = 1 mapel
+Contoh:
+Matematika
+Bahasa Indonesia
+IPA
+IPS
+PAI"></textarea>
+<div class="note">Saat edit, hanya 1 mapel</div>
+
+<button id="btnSimpan">Simpan Mapel</button>
+<button id="btnBatal" class="secondary" style="display:none">Batal</button>
+
+<div class="error" id="error"></div>
+
+<hr>
+<h3>Daftar Mata Pelajaran</h3>
+<div id="listMapel">Memuat...</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, getDocs,
+  doc, updateDoc, deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/* ===== FIREBASE ===== */
+const firebaseConfig = {
+  apiKey:"AIzaSyCcjNKkW3ASw46yKXshKIa6qkrJMNVlep8",
+  authDomain:"jurnalmengajar-d4e8e.firebaseapp.com",
+  projectId:"jurnalmengajar-d4e8e"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ===== ELEMENT ===== */
+const namaMapelEl = document.getElementById("namaMapel");
+const btnSimpan   = document.getElementById("btnSimpan");
+const btnBatal    = document.getElementById("btnBatal");
+const listMapelEl = document.getElementById("listMapel");
+const errorEl     = document.getElementById("error");
+
+/* ===== STATE ===== */
+let editId = null;
+
+/* ===== LOAD MAPEL ===== */
+async function loadMapel(){
+  const snap = await getDocs(collection(db,"mapel"));
+  if(snap.empty){
+    listMapelEl.innerHTML="Belum ada mata pelajaran";
+    return;
+  }
+
+  let html="<ul>";
+  snap.forEach(d=>{
+    const x=d.data();
+    html+=`
+      <li>
+        ${x.namaMapel}
+        <button class="small" onclick="editMapel('${d.id}','${x.namaMapel}')">Edit</button>
+        <button class="small danger" onclick="hapusMapel('${d.id}')">Hapus</button>
+      </li>`;
+  });
+  html+="</ul>";
+  listMapelEl.innerHTML=html;
+}
+loadMapel();
+
+/* ===== SIMPAN ===== */
+async function simpanMapel(){
+  errorEl.textContent="";
+  const teks = namaMapelEl.value.trim();
+  if(!teks){
+    errorEl.textContent="Nama mapel wajib diisi";
+    return;
+  }
+
+  /* MODE EDIT */
+  if(editId){
+    const nama = teks.split("\n")[0].trim();
+    await updateDoc(doc(db,"mapel",editId),{
+      namaMapel:nama
+    });
+    resetForm();
+    loadMapel();
+    return;
+  }
+
+  /* MODE TAMBAH BANYAK */
+  const daftar = teks
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(x=>x);
+
+  for(const namaMapel of daftar){
+    await addDoc(collection(db,"mapel"),{
+      namaMapel,
+      dibuat:new Date()
+    });
+  }
+
+  resetForm();
+  loadMapel();
+}
+
+/* ===== EDIT ===== */
+window.editMapel=(id,nama)=>{
+  editId=id;
+  namaMapelEl.value=nama;
+  btnSimpan.textContent="Update Mapel";
+  btnBatal.style.display="block";
+};
+
+/* ===== HAPUS ===== */
+window.hapusMapel=async(id)=>{
+  if(!confirm("Hapus mata pelajaran ini?")) return;
+  await deleteDoc(doc(db,"mapel",id));
+  loadMapel();
+};
+
+/* ===== RESET ===== */
+function resetForm(){
+  editId=null;
+  namaMapelEl.value="";
+  btnSimpan.textContent="Simpan Mapel";
+  btnBatal.style.display="none";
+}
+
+/* ===== EVENT ===== */
+btnSimpan.onclick=simpanMapel;
+btnBatal.onclick=resetForm;
+</script>
+
+</body>
+</html>

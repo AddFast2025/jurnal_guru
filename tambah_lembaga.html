@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Master Lembaga</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{font-family:Arial;background:#f4f6f8;padding:20px}
+.card{max-width:560px;margin:auto;background:#fff;padding:20px;border-radius:8px}
+label{font-weight:bold;display:block;margin-top:10px}
+input,button{width:100%;padding:8px;margin-top:5px}
+button{background:#2e7d32;color:#fff;border:none;margin-top:15px;cursor:pointer}
+button.secondary{background:#757575}
+button:disabled{background:#9e9e9e}
+
+.preview img{width:90px;height:90px;object-fit:contain;border:1px solid #ccc;margin-top:8px}
+ul{list-style:none;padding:0;margin-top:15px}
+li{display:flex;align-items:center;gap:10px;border-bottom:1px solid #eee;padding:8px 0}
+.logo{width:42px;height:42px;object-fit:contain;border:1px solid #ddd}
+.small-btn{width:auto;padding:4px 8px;font-size:12px}
+
+.status{font-size:12px;margin-top:6px;color:#555}
+.error{color:#c62828;font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2 align="center">Master Lembaga</h2>
+
+<label>Kode Lembaga</label>
+<input id="kode" placeholder="Contoh: SD01">
+
+<label>Nama Lembaga</label>
+<input id="nama" placeholder="Contoh: SD Negeri 1">
+
+<label>Upload Logo</label>
+<input type="file" id="logoFile" accept="image/*">
+
+<div class="status" id="fileName"></div>
+<div class="preview" id="preview"></div>
+<div class="status" id="status"></div>
+<div class="error" id="error"></div>
+
+<button id="btnSimpan">Simpan</button>
+<button id="btnBatal" class="secondary" style="display:none">Batal</button>
+
+<hr>
+<h3>Daftar Lembaga</h3>
+<div id="list">Memuat...</div>
+</div>
+
+<script type="module">
+/* ================= FIREBASE ================= */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, getDocs,
+  doc, updateDoc, getDoc
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:"AIzaSyCcjNKkW3ASw46yKXshKIa6qkrJMNVlep8",
+  authDomain:"jurnalmengajar-d4e8e.firebaseapp.com",
+  projectId:"jurnalmengajar-d4e8e"
+};
+
+
+
+
+
+
+
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ================= ELEMENT ================= */
+const kodeEl   = document.getElementById("kode");
+const namaEl   = document.getElementById("nama");
+const fileEl   = document.getElementById("logoFile");
+const fileNameEl = document.getElementById("fileName");
+const previewEl= document.getElementById("preview");
+const statusEl = document.getElementById("status");
+const errorEl  = document.getElementById("error");
+const listEl   = document.getElementById("list");
+const btnSimpan= document.getElementById("btnSimpan");
+const btnBatal = document.getElementById("btnBatal");
+
+/* ================= APPS SCRIPT ================= */
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwe6lo9qYfzU8EA4oFesmPQ2rKw0P01MtFK7fenc2UfRm1x_29yS_AAc2PbqRNcMfnTHA/exec";
+
+/* ================= STATE ================= */
+let editId = null;
+let oldLogo = "";
+
+/* ================= HELPER ================= */
+function driveImg(url,size=200){
+  if(!url) return "";
+  if(url.includes("thumbnail")) return url;
+  if(url.includes("uc?id=")){
+    return url.replace(
+      "https://drive.google.com/uc?id=",
+      "https://drive.google.com/thumbnail?id="
+    ) + "&sz=w"+size+"&t="+Date.now();
+  }
+  return url;
+}
+function getFileId(url){
+  const m = url.match(/id=([^&]+)/);
+  return m ? m[1] : "";
+}
+
+/* ================= PREVIEW SAAT PILIH FILE ================= */
+fileEl.addEventListener("change",()=>{
+  const file = fileEl.files[0];
+  if(!file){
+    fileNameEl.textContent="";
+    previewEl.innerHTML="";
+    return;
+  }
+
+  if(!file.type.startsWith("image/")){
+    alert("File harus berupa gambar");
+    fileEl.value="";
+    return;
+  }
+
+  
+
+  const reader=new FileReader();
+  reader.onload=()=>{
+    previewEl.innerHTML=`<img src="${reader.result}">`;
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ================= UPLOAD LOGO ================= */
+async function uploadLogo(file){
+  statusEl.textContent="⏳ Upload logo...";
+  btnSimpan.disabled=true;
+
+  const reader=new FileReader();
+  return new Promise((resolve,reject)=>{
+    reader.onload=async()=>{
+      try{
+        const res=await fetch(GAS_URL,{
+          method:"POST",
+          body:JSON.stringify({
+            action:"upload",
+            name:file.name,
+            mime:file.type,
+            data:reader.result.split(",")[1]
+          })
+        });
+        const json=await res.json();
+        resolve(json.url);
+      }catch(e){reject(e);}
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/* ================= DELETE OLD LOGO ================= */
+async function deleteOldLogo(url){
+  const fileId=getFileId(url);
+  if(!fileId) return;
+  await fetch(GAS_URL,{
+    method:"POST",
+    body:JSON.stringify({action:"delete",fileId})
+  });
+}
+
+/* ================= LOAD ================= */
+async function load(){
+  const snap=await getDocs(collection(db,"lembaga"));
+  let html="<ul>";
+  snap.forEach(d=>{
+    const x=d.data();
+    html+=`
+      <li>
+        <img src="${driveImg(x.logo,120)}" class="logo">
+        <div style="flex:1"><b>${x.kode}</b><br>${x.nama}</div>
+        <button class="small-btn" data-id="${d.id}">Edit</button>
+      </li>`;
+  });
+  html+="</ul>";
+  listEl.innerHTML=html;
+
+  listEl.querySelectorAll("button").forEach(b=>{
+    b.onclick=()=>edit(b.dataset.id);
+  });
+}
+load();
+
+/* ================= EDIT ================= */
+async function edit(id){
+  const snap=await getDoc(doc(db,"lembaga",id));
+  const x=snap.data();
+
+  editId=id;
+  oldLogo=x.logo||"";
+
+  kodeEl.value=x.kode;
+  namaEl.value=x.nama;
+  fileEl.value="";
+  fileNameEl.textContent="";
+  previewEl.innerHTML=x.logo?`<img src="${driveImg(x.logo,300)}">`:"";
+
+  btnSimpan.textContent="Update";
+  btnBatal.style.display="block";
+}
+
+/* ================= RESET ================= */
+function resetForm(){
+  editId=null;
+  oldLogo="";
+  kodeEl.value="";
+  namaEl.value="";
+  fileEl.value="";
+  fileNameEl.textContent="";
+  previewEl.innerHTML="";
+  statusEl.textContent="";
+  errorEl.textContent="";
+  btnSimpan.textContent="Simpan";
+  btnBatal.style.display="none";
+}
+
+/* ================= SIMPAN ================= */
+async function simpan(){
+  errorEl.textContent="";
+  const kode=kodeEl.value.trim();
+  const nama=namaEl.value.trim();
+  const file=fileEl.files[0];
+
+  if(!kode||!nama){
+    errorEl.textContent="Kode & nama wajib diisi";
+    return;
+  }
+
+  try{
+    let logoUrl=oldLogo;
+
+    if(file){
+      if(oldLogo) await deleteOldLogo(oldLogo);
+      logoUrl=await uploadLogo(file);
+      previewEl.innerHTML=`<img src="${driveImg(logoUrl,300)}">`;
+      oldLogo=logoUrl;
+    }
+
+    const data={kode,nama,logo:logoUrl};
+
+    if(editId){
+      await updateDoc(doc(db,"lembaga",editId),data);
+    }else{
+      await addDoc(collection(db,"lembaga"),{
+        ...data,aktif:true,dibuat:new Date()
+      });
+    }
+
+    resetForm();
+    load();
+  }catch(e){
+    errorEl.textContent="ERROR: "+e;
+    console.error(e);
+  }
+
+  btnSimpan.disabled=false;
+}
+
+/* ================= EVENT ================= */
+btnSimpan.addEventListener("click",simpan);
+btnBatal.addEventListener("click",resetForm);
+</script>
+
+</body>
+</html>

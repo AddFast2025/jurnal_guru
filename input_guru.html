@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Master Guru</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{
+  font-family:Arial, sans-serif;
+  background:#f4f6f8;
+  padding:20px
+}
+.card{
+  max-width:560px;
+  margin:auto;
+  background:#fff;
+  padding:20px;
+  border-radius:8px
+}
+label{
+  font-weight:bold;
+  display:block;
+  margin-top:10px
+}
+select,textarea,button{
+  width:100%;
+  padding:8px;
+  margin-top:5px;
+  font-family:inherit
+}
+textarea{resize:vertical}
+button{
+  background:#2e7d32;
+  color:#fff;
+  border:none;
+  margin-top:15px;
+  cursor:pointer
+}
+button.secondary{background:#757575}
+button.danger{background:#c62828}
+button.small{
+  width:auto;
+  padding:4px 8px;
+  font-size:12px
+}
+ul{list-style:none;padding:0;margin-top:10px}
+li{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  border-bottom:1px solid #eee;
+  padding:6px 0
+}
+.error{
+  color:#c62828;
+  font-size:12px;
+  margin-top:6px
+}
+.note{
+  font-size:12px;
+  color:#555;
+  margin-top:4px
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2 align="center">Master Guru</h2>
+
+<label>Pilih Lembaga</label>
+<select id="pilihLembaga">
+  <option value="">-- Pilih Lembaga --</option>
+</select>
+
+<label>Nama Guru</label>
+<textarea id="namaGuru" rows="6"
+placeholder="1 baris = 1 guru
+Contoh:
+Ahmad Fauzi, S.Pd
+Siti Aminah, S.Pd
+Budi Santoso, M.Pd"></textarea>
+<div class="note">Saat edit, hanya 1 guru</div>
+
+<button id="btnSimpan">Simpan Guru</button>
+<button id="btnBatal" class="secondary" style="display:none">Batal</button>
+
+<div class="error" id="error"></div>
+
+<hr>
+<h3>Daftar Guru</h3>
+<div id="listGuru">Pilih lembaga terlebih dahulu</div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, getDocs,
+  doc, updateDoc, deleteDoc,
+  query, where
+} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+/* ===== FIREBASE ===== */
+const firebaseConfig = {
+  apiKey:"AIzaSyCcjNKkW3ASw46yKXshKIa6qkrJMNVlep8",
+  authDomain:"jurnalmengajar-d4e8e.firebaseapp.com",
+  projectId:"jurnalmengajar-d4e8e"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+/* ===== ELEMENT ===== */
+const pilihLembagaEl = document.getElementById("pilihLembaga");
+const namaGuruEl    = document.getElementById("namaGuru");
+const btnSimpan     = document.getElementById("btnSimpan");
+const btnBatal      = document.getElementById("btnBatal");
+const listGuruEl    = document.getElementById("listGuru");
+const errorEl       = document.getElementById("error");
+
+/* ===== STATE ===== */
+let editId = null;
+
+/* ===== LOAD LEMBAGA ===== */
+async function loadLembaga(){
+  const snap = await getDocs(collection(db,"lembaga"));
+  let opt='<option value="">-- Pilih Lembaga --</option>';
+  snap.forEach(d=>{
+    const x=d.data();
+    opt+=`<option value="${d.id}">${x.nama}</option>`;
+  });
+  pilihLembagaEl.innerHTML=opt;
+}
+loadLembaga();
+
+/* ===== LOAD GURU ===== */
+async function loadGuru(lembagaId){
+  if(!lembagaId){
+    listGuruEl.innerHTML="Pilih lembaga terlebih dahulu";
+    return;
+  }
+
+  const q=query(
+    collection(db,"guru"),
+    where("lembagaId","==",lembagaId)
+  );
+  const snap=await getDocs(q);
+
+  if(snap.empty){
+    listGuruEl.innerHTML="Belum ada guru";
+    return;
+  }
+
+  let html="<ul>";
+  snap.forEach(d=>{
+    const x=d.data();
+    html+=`
+      <li>
+        ${x.namaGuru}
+        <button class="small" onclick="editGuru('${d.id}','${x.namaGuru}')">Edit</button>
+        <button class="small danger" onclick="hapusGuru('${d.id}')">Hapus</button>
+      </li>`;
+  });
+  html+="</ul>";
+  listGuruEl.innerHTML=html;
+}
+
+/* ===== SIMPAN ===== */
+async function simpanGuru(){
+  errorEl.textContent="";
+  const lembagaId = pilihLembagaEl.value;
+  const teks = namaGuruEl.value.trim();
+
+  if(!lembagaId || !teks){
+    errorEl.textContent="Lembaga dan nama guru wajib diisi";
+    return;
+  }
+
+  /* MODE EDIT */
+  if(editId){
+    const nama = teks.split("\n")[0].trim();
+    await updateDoc(doc(db,"guru",editId),{
+      namaGuru:nama
+    });
+    resetForm();
+    loadGuru(lembagaId);
+    return;
+  }
+
+  /* MODE TAMBAH BANYAK */
+  const daftar = teks
+    .split("\n")
+    .map(x=>x.trim())
+    .filter(x=>x);
+
+  for(const namaGuru of daftar){
+    await addDoc(collection(db,"guru"),{
+      lembagaId,
+      namaGuru,
+      dibuat:new Date()
+    });
+  }
+
+  resetForm();
+  loadGuru(lembagaId);
+}
+
+/* ===== EDIT ===== */
+window.editGuru=(id,nama)=>{
+  editId=id;
+  namaGuruEl.value=nama;
+  btnSimpan.textContent="Update Guru";
+  btnBatal.style.display="block";
+};
+
+/* ===== HAPUS ===== */
+window.hapusGuru=async(id)=>{
+  if(!confirm("Hapus guru ini?")) return;
+  await deleteDoc(doc(db,"guru",id));
+  loadGuru(pilihLembagaEl.value);
+};
+
+/* ===== RESET ===== */
+function resetForm(){
+  editId=null;
+  namaGuruEl.value="";
+  btnSimpan.textContent="Simpan Guru";
+  btnBatal.style.display="none";
+}
+
+/* ===== EVENT ===== */
+btnSimpan.onclick=simpanGuru;
+btnBatal.onclick=resetForm;
+pilihLembagaEl.onchange=()=>loadGuru(pilihLembagaEl.value);
+</script>
+
+</body>
+</html>
