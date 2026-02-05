@@ -1,0 +1,147 @@
+
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Menu Administrasi</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+body{
+  margin:0;
+  font-family:system-ui, Arial, sans-serif;
+  background:#f4f6f8;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.card{
+  width:100%;
+  max-width:420px;
+  background:#fff;
+  padding:24px;
+  border-radius:14px;
+  box-shadow:0 8px 20px rgba(0,0,0,.08);
+}
+
+h2{
+  text-align:center;
+  margin:0 0 6px;
+}
+
+.sub{
+  text-align:center;
+  color:#555;
+  margin-bottom:20px;
+  font-size:14px;
+}
+
+.menu{
+  display:grid;
+  grid-template-columns:1fr;
+  gap:12px;
+}
+
+.menu a{
+  text-decoration:none;
+}
+
+.btn{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:14px;
+  border-radius:10px;
+  font-size:16px;
+  font-weight:bold;
+  cursor:pointer;
+  border:none;
+  transition:.15s;
+}
+
+.btn span{
+  font-size:22px;
+}
+
+/* Warna tombol */
+.btn-guru{background:#e3f2fd;color:#1565c0}
+.btn-jurnal{background:#e8f5e9;color:#2e7d32}
+.btn-kelas{background:#fff3e0;color:#ef6c00}
+.btn-lembaga{background:#f3e5f5;color:#6a1b9a}
+.btn-mapel{background:#ede7f6;color:#4527a0}
+.btn-rombel{background:#e0f2f1;color:#00695c}
+
+.btn:hover{
+  transform:translateY(-2px);
+  box-shadow:0 4px 10px rgba(0,0,0,.12);
+}
+
+/* Footer */
+.footer{
+  text-align:center;
+  margin-top:18px;
+  font-size:12px;
+  color:#777;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2>Menu Administrasi</h2>
+  <div class="sub">Kelola data & jurnal sekolah</div>
+
+  <div class="menu">
+
+   <a href="https://addfast2025.github.io/jurnal_guru/tambah_lembaga.html">
+      <div class="btn btn-lembaga">
+        <span>🏢</span> Tambah Lembaga
+      </div>
+    </a>
+
+    <a href="https://addfast2025.github.io/jurnal_guru/input_guru.html">
+      <div class="btn btn-guru">
+        <span>👨‍🏫</span> Tambah Guru
+      </div>
+    </a>
+
+ <a href="https://addfast2025.github.io/jurnal_guru/tambah_mapel.html">
+      <div class="btn btn-mapel">
+        <span>📚</span> Tambah Mapel
+      </div>
+    </a>
+  
+
+    <a href="https://addfast2025.github.io/jurnal_guru/tambah_kelas.html">
+      <div class="btn btn-kelas">
+        <span>🏫</span> Tambah Kelas
+      </div>
+    </a>
+
+  <a href="https://addfast2025.github.io/jurnal_guru/tambah_rombel.html">
+      <div class="btn btn-rombel">
+        <span>👥</span> Tambah Rombel
+      </div>
+    </a>
+
+   
+  <a href="https://addfast2025.github.io/jurnal_guru/jurnal_guru.html">
+      <div class="btn btn-jurnal">
+        <span>📝</span> Input Jurnal
+      </div>
+    </a>
+
+   
+
+  </div>
+
+  <div class="footer">
+    © Sistem Jurnal Sekolah
+  </div>
+</div>
+
+</body>
+</html>
