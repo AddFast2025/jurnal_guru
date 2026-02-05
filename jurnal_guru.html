@@ -11,18 +11,34 @@ body{
   background:#f4f6f8;
   padding:20px
 }
+
+#btnGantiLembaga{
+  position:absolute;
+  top:12px;
+  right:12px;
+  cursor:pointer;
+  font-size:22px;
+}
+#btnGantiLembaga img{
+  width:28px;
+  height:28px;
+}
+
+#btnKamera{
+  background:#1565c0;
+}
+
+
 .card{
-  max-width:620px;
+  position:relative;
+  max-width:640px;
   margin:auto;
   background:#fff;
   padding:20px;
   border-radius:8px
 }
-label{
-  font-weight:bold;
-  display:block;
-  margin-top:10px
-}
+
+label{font-weight:bold;display:block;margin-top:10px}
 input,select,textarea,button{
   width:100%;
   padding:8px;
@@ -38,6 +54,15 @@ button{
   cursor:pointer
 }
 button:disabled{background:#9e9e9e}
+.logo{
+  text-align:center;
+  margin-bottom:10px
+}
+.logo img{
+  max-width:120px;
+  max-height:120px;
+  object-fit:contain
+}
 .preview img{
   width:120px;
   height:120px;
@@ -47,15 +72,38 @@ button:disabled{background:#9e9e9e}
 }
 .status{font-size:12px;color:#555;margin-top:6px}
 .error{color:#c62828;font-size:12px;margin-top:6px}
+.hidden{display:none}
 </style>
 </head>
 <body>
 
 <div class="card">
-<h2 align="center">Input Jurnal Guru</h2>
 
-<label>Pilih Lembaga</label>
-<select id="lembaga"></select>
+<!-- ===== LOGIN KODE LEMBAGA ===== -->
+<div id="loginBox">
+  <h3 align="center">Masukkan Kode Lembaga</h3>
+  <input id="kodeLembaga" placeholder="Contoh: SD01">
+  <button id="btnMasuk">Masuk</button>
+  <div class="error" id="loginError"></div>
+</div>
+
+
+<!-- ===== FORM JURNAL ===== -->
+<div id="formJurnal" class="hidden">
+
+
+<div id="btnGantiLembaga" title="Ganti Lembaga">
+  🏫
+</div>
+
+
+<div class="logo" id="logoBox"></div>
+
+<h2 align="center">Input Jurnal Guru</h2>
+<div id="namaLembagaTampil"
+     style="text-align:center;font-weight:bold;color:#2e7d32;margin-bottom:10px">
+</div>
+
 
 <label>Nama Guru</label>
 <select id="guru"></select>
@@ -79,12 +127,27 @@ button:disabled{background:#9e9e9e}
 <input type="number" id="absen">
 
 <label>Foto Kegiatan</label>
-<input type="file" id="foto" accept="image/*">
+
+<input
+  type="file"
+  id="foto"
+  accept="image/*"
+  capture="environment"
+  class="hidden">
+
+<button type="button" id="btnKamera">
+  📷 Buka Kamera
+</button>
+
+
+
 <div class="preview" id="preview"></div>
 <div class="status" id="status"></div>
 <div class="error" id="error"></div>
 
 <button id="btnSimpan">Simpan Jurnal</button>
+</div>
+
 </div>
 
 <script type="module">
@@ -103,82 +166,171 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-/* ===== APPS SCRIPT (SAMA DENGAN LOGO) ===== */
-const GAS_URL =
-"https://script.google.com/macros/s/AKfycbwe6lo9qYfzU8EA4oFesmPQ2rKw0P01MtFK7fenc2UfRm1x_29yS_AAc2PbqRNcMfnTHA/exec";
+/* ===== APPS SCRIPT ===== */
+const GAS_URL="https://script.google.com/macros/s/AKfycbwe6lo9qYfzU8EA4oFesmPQ2rKw0P01MtFK7fenc2UfRm1x_29yS_AAc2PbqRNcMfnTHA/exec";
 
 /* ===== ELEMENT ===== */
-const lembagaEl = document.getElementById("lembaga");
-const guruEl = document.getElementById("guru");
-const kelasEl = document.getElementById("kelas");
-const rombelEl = document.getElementById("rombel");
-const mapelEl = document.getElementById("mapel");
-const catatanEl = document.getElementById("catatan");
-const hadirEl = document.getElementById("hadir");
-const absenEl = document.getElementById("absen");
-const fotoEl = document.getElementById("foto");
-const previewEl = document.getElementById("preview");
-const statusEl = document.getElementById("status");
-const errorEl = document.getElementById("error");
-const btnSimpan = document.getElementById("btnSimpan");
+const loginBox=document.getElementById("loginBox");
+const formJurnal=document.getElementById("formJurnal");
+const kodeEl=document.getElementById("kodeLembaga");
+const btnMasuk=document.getElementById("btnMasuk");
+const loginError=document.getElementById("loginError");
+const logoBox=document.getElementById("logoBox");
+
+const guruEl=document.getElementById("guru");
+const kelasEl=document.getElementById("kelas");
+const rombelEl=document.getElementById("rombel");
+const mapelEl=document.getElementById("mapel");
+const catatanEl=document.getElementById("catatan");
+const hadirEl=document.getElementById("hadir");
+const absenEl=document.getElementById("absen");
+const fotoEl=document.getElementById("foto");
+const previewEl=document.getElementById("preview");
+const statusEl=document.getElementById("status");
+const errorEl=document.getElementById("error");
+const btnSimpan=document.getElementById("btnSimpan");
+const namaLembagaTampil = document.getElementById("namaLembagaTampil");
+const btnKamera = document.getElementById("btnKamera");
+
+
+
+let lembagaId="";
+let namaLembaga="";
+
+function sortByText(a, b){
+  return a.localeCompare(b, "id", { numeric: true, sensitivity: "base" });
+}
+
+
+btnKamera.onclick = () => {
+  fotoEl.click();
+};
+
+
+/* ===== MASUK DENGAN KODE ===== */
+btnMasuk.onclick=async()=>{
+  loginError.textContent="";
+  const kode=kodeEl.value.trim();
+  if(!kode) return;
+
+  const q=query(collection(db,"lembaga"),where("kode","==",kode));
+  const s=await getDocs(q);
+
+  if(s.empty){
+    loginError.textContent="Kode lembaga tidak ditemukan";
+    return;
+  }
+
+  const d=s.docs[0];
+  const x=d.data();
+  lembagaId=d.id;
+  namaLembaga=x.nama;
+
+localStorage.setItem("kodeLembaga", kode);
+
+logoBox.innerHTML = x.logo
+  ? `<img src="${driveThumb(x.logo,200)}">`
+  : "";
+namaLembagaTampil.textContent = namaLembaga;
+
+
+  loginBox.classList.add("hidden");
+  formJurnal.classList.remove("hidden");
+
+
+
+  loadGuru();
+  loadKelas();
+  loadMapel();
+};
 
 /* ===== LOAD DATA ===== */
-async function loadLembaga(){
-  const s=await getDocs(collection(db,"lembaga"));
-  lembagaEl.innerHTML='<option value="">-- Pilih --</option>';
-  s.forEach(d=>lembagaEl.innerHTML+=
-    `<option value="${d.id}">${d.data().nama}</option>`);
-}
-loadLembaga();
-
-async function loadGuru(id){
-  const q=query(collection(db,"guru"),where("lembagaId","==",id));
+async function loadGuru(){
+  const q=query(collection(db,"guru"),where("lembagaId","==",lembagaId));
   const s=await getDocs(q);
+
+  const arr=[];
+  s.forEach(d=>arr.push({id:d.id,...d.data()}));
+  arr.sort((a,b)=>sortByText(a.namaGuru,b.namaGuru));
+
   guruEl.innerHTML='<option value="">-- Pilih --</option>';
-  s.forEach(d=>guruEl.innerHTML+=
-    `<option value="${d.id}">${d.data().namaGuru}</option>`);
+  arr.forEach(x=>{
+    guruEl.innerHTML+=
+      `<option value="${x.id}">${x.namaGuru}</option>`;
+  });
 }
 
-async function loadKelas(id){
-  const q=query(collection(db,"kelas"),where("lembagaId","==",id));
+async function loadKelas(){
+  const q=query(collection(db,"kelas"),where("lembagaId","==",lembagaId));
   const s=await getDocs(q);
+
+  const arr=[];
+  s.forEach(d=>arr.push({id:d.id,...d.data()}));
+  arr.sort((a,b)=>sortByText(a.namaKelas,b.namaKelas));
+
   kelasEl.innerHTML='<option value="">-- Pilih --</option>';
-  s.forEach(d=>kelasEl.innerHTML+=
-    `<option value="${d.id}">${d.data().namaKelas}</option>`);
+  arr.forEach(x=>{
+    kelasEl.innerHTML+=
+      `<option value="${x.id}">${x.namaKelas}</option>`;
+  });
 }
 
-async function loadRombel(kelasId){
-  const q=query(collection(db,"rombel"),where("kelasId","==",kelasId));
+async function loadRombel(){
+  const q=query(collection(db,"rombel"),where("kelasId","==",kelasEl.value));
   const s=await getDocs(q);
+
+  const arr=[];
+  s.forEach(d=>arr.push({id:d.id,...d.data()}));
+  arr.sort((a,b)=>sortByText(a.namaRombel,b.namaRombel));
+
   rombelEl.innerHTML='<option value="">-- Pilih --</option>';
-  s.forEach(d=>rombelEl.innerHTML+=
-    `<option value="${d.id}">${d.data().namaRombel}</option>`);
+  arr.forEach(x=>{
+    rombelEl.innerHTML+=
+      `<option value="${x.id}">${x.namaRombel}</option>`;
+  });
 }
 
 async function loadMapel(){
   const s=await getDocs(collection(db,"mapel"));
-  mapelEl.innerHTML='<option value="">-- Pilih --</option>';
-  s.forEach(d=>mapelEl.innerHTML+=
-    `<option value="${d.id}">${d.data().namaMapel}</option>`);
-}
-loadMapel();
 
-/* ===== FOTO PREVIEW ===== */
-fotoEl.onchange=()=>{
-  const f=fotoEl.files[0];
-  if(!f) return;
-  const r=new FileReader();
-  r.onload=()=>previewEl.innerHTML=`<img src="${r.result}">`;
-  r.readAsDataURL(f);
+  const arr=[];
+  s.forEach(d=>arr.push({id:d.id,...d.data()}));
+  arr.sort((a,b)=>sortByText(a.namaMapel,b.namaMapel));
+
+  mapelEl.innerHTML='<option value="">-- Pilih --</option>';
+  arr.forEach(x=>{
+    mapelEl.innerHTML+=
+      `<option value="${x.id}">${x.namaMapel}</option>`;
+  });
+}
+
+
+/* ===== FOTO ===== */
+fotoEl.onchange = () => {
+  const file = fotoEl.files[0];
+  if(!file) return;
+
+  // pastikan image
+  if(!file.type.startsWith("image/")){
+    alert("Foto harus diambil dari kamera");
+    fotoEl.value="";
+    return;
+  }
+
+  // preview
+  const r = new FileReader();
+  r.onload = () => {
+    previewEl.innerHTML = `<img src="${r.result}">`;
+  };
+  r.readAsDataURL(file);
 };
 
-/* ===== UPLOAD FOTO ===== */
 async function uploadFoto(file){
   statusEl.textContent="Upload foto...";
   const r=new FileReader();
   return new Promise(res=>{
     r.onload=async()=>{
-      const out=await fetch(GAS_URL,{
+      const o=await fetch(GAS_URL,{
         method:"POST",
         body:JSON.stringify({
           action:"upload",
@@ -187,7 +339,7 @@ async function uploadFoto(file){
           data:r.result.split(",")[1]
         })
       });
-      const j=await out.json();
+      const j=await o.json();
       res(j.url);
     };
     r.readAsDataURL(file);
@@ -196,15 +348,18 @@ async function uploadFoto(file){
 
 /* ===== SIMPAN ===== */
 btnSimpan.onclick=async()=>{
-  errorEl.textContent="";
+if(!fotoEl.files[0]){
+  errorEl.textContent = "Foto kegiatan wajib diambil dari kamera";
+  return;
+}
+
   try{
     let fotoUrl="";
-    if(fotoEl.files[0]){
-      fotoUrl=await uploadFoto(fotoEl.files[0]);
-    }
+    if(fotoEl.files[0]) fotoUrl=await uploadFoto(fotoEl.files[0]);
 
     await addDoc(collection(db,"jurnal"),{
-      lembagaId:lembagaEl.value,
+      lembagaId,
+      namaLembaga,
       guruId:guruEl.value,
       namaGuru:guruEl.options[guruEl.selectedIndex].text,
       kelasId:kelasEl.value,
@@ -227,12 +382,39 @@ btnSimpan.onclick=async()=>{
   }
 };
 
-/* ===== EVENT ===== */
-lembagaEl.onchange=()=>{
-  loadGuru(lembagaEl.value);
-  loadKelas(lembagaEl.value);
+kelasEl.onchange=loadRombel;
+
+
+function driveThumb(url, size = 300){
+  if(!url) return "";
+  if(url.includes("thumbnail")) return url;
+  if(url.includes("uc?id=")){
+    return url.replace(
+      "https://drive.google.com/uc?id=",
+      "https://drive.google.com/thumbnail?id="
+    ) + "&sz=w" + size;
+  }
+  return url;
+}
+
+window.addEventListener("load", async () => {
+  const kode = localStorage.getItem("kodeLembaga");
+  if(!kode) return;
+
+  kodeEl.value = kode;
+  btnMasuk.click();
+});
+
+
+document.getElementById("btnGantiLembaga").onclick = () => {
+  if(!confirm("Ganti lembaga?")) return;
+  localStorage.removeItem("kodeLembaga");
+  location.reload();
 };
-kelasEl.onchange=()=>loadRombel(kelasEl.value);
+
+
+
+
 </script>
 
 </body>
